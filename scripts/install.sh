@@ -10,6 +10,7 @@ REF="$DEFAULT_REF"
 ENV_FILE="$INSTALLER_ROOT/.env"
 APP_DIR=""
 ENABLE_AUTOSTART=false
+ENABLE_SERVICE=true
 ENABLE_AUTOLOGIN=false
 RUN_AFTER_INSTALL=false
 REBOOT_AFTER_INSTALL=false
@@ -25,6 +26,8 @@ Uso: install.sh [opciones]
   --app-dir RUTA             Directorio de instalación.
   --env-file RUTA            Archivo .env que se copiará.
   --autostart                Iniciar la interfaz al abrir el escritorio.
+  --service                  Ejecutar Gateway como servicio (predeterminado).
+  --no-service               No crear el servicio en segundo plano.
   --autologin                Configurar autologin de LightDM.
   --run                      Ejecutar el gateway al terminar.
   --reboot                   Reiniciar el equipo al terminar.
@@ -41,6 +44,8 @@ while [ "$#" -gt 0 ]; do
     --app-dir) APP_DIR="${2:?Falta ruta}"; shift 2 ;;
     --env-file) ENV_FILE="${2:?Falta ruta}"; shift 2 ;;
     --autostart) ENABLE_AUTOSTART=true; shift ;;
+    --service) ENABLE_SERVICE=true; shift ;;
+    --no-service) ENABLE_SERVICE=false; shift ;;
     --autologin) ENABLE_AUTOLOGIN=true; shift ;;
     --run) RUN_AFTER_INSTALL=true; shift ;;
     --reboot) REBOOT_AFTER_INSTALL=true; shift ;;
@@ -60,6 +65,24 @@ APP_DIR="${APP_DIR:-$INSTALL_HOME/gateway}"
 validate_app_dir
 [ -f "$ENV_FILE" ] || fail "No existe el archivo de configuración: $ENV_FILE"
 require_sudo
+
+if [ "$ENABLE_SERVICE" = true ] && [ "$ENABLE_AUTOSTART" = true ]; then
+  fail "No active --service y --autostart juntos; crearían dos procesos Gateway."
+fi
+
+SERVICE_WAS_ACTIVE=false
+restore_service() {
+  if [ "$SERVICE_WAS_ACTIVE" = true ]; then
+    as_root systemctl start "$GATEWAY_SERVICE_NAME" || true
+  fi
+}
+trap restore_service EXIT
+
+if service_is_active; then
+  SERVICE_WAS_ACTIVE=true
+  log "Deteniendo temporalmente $GATEWAY_SERVICE_NAME..."
+  as_root systemctl stop "$GATEWAY_SERVICE_NAME"
+fi
 
 if [ "$INSTALL_SYSTEM_PACKAGES" = true ]; then
   log "[1/7] Instalando dependencias del sistema..."
@@ -89,7 +112,15 @@ log "[5/7] Creando comando de inicio..."
 create_start_script
 
 log "[6/7] Aplicando opciones de escritorio..."
-if [ "$ENABLE_AUTOSTART" = true ]; then
+if [ "$ENABLE_SERVICE" = true ]; then
+  remove_autostart
+  configure_systemd_service
+  SERVICE_WAS_ACTIVE=false
+else
+  remove_systemd_service
+  SERVICE_WAS_ACTIVE=false
+fi
+if [ "$ENABLE_AUTOSTART" = true ] && [ "$ENABLE_SERVICE" = false ]; then
   configure_autostart
 fi
 if [ "$ENABLE_AUTOLOGIN" = true ]; then
@@ -99,7 +130,7 @@ fi
 log "[7/7] Instalación terminada."
 show_installed_version
 
-if [ "$RUN_AFTER_INSTALL" = true ]; then
+if [ "$RUN_AFTER_INSTALL" = true ] && [ "$ENABLE_SERVICE" = false ]; then
   log "Iniciando Gateway..."
   run_as_install_user nohup "$APP_DIR/start.sh" >/dev/null 2>&1 &
 fi

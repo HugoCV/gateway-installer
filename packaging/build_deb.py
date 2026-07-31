@@ -78,11 +78,9 @@ def prepare_package_tree(root: Path, version: str) -> None:
         application_root / "README.md",
         0o644,
     )
-    install_file(
-        VERSION_FILE,
-        application_root / "VERSION",
-        0o644,
-    )
+    packaged_version = application_root / "VERSION"
+    packaged_version.write_text(f"{version}\n", encoding="utf-8")
+    packaged_version.chmod(0o644)
 
     for relative_path in (
         "scripts/common.sh",
@@ -90,6 +88,7 @@ def prepare_package_tree(root: Path, version: str) -> None:
         "scripts/update.sh",
         "scripts/uninstall.sh",
         "templates/gateway.desktop",
+        "templates/alrotek-gateway.service",
         "templates/lightdm-autologin.conf",
     ):
         mode = 0o755 if relative_path.endswith(".sh") else 0o644

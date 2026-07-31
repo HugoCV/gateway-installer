@@ -39,7 +39,8 @@ class GatewayInstaller(tk.Tk):
         self.git_ref = tk.StringVar(value="master")
         self.app_dir = tk.StringVar(value=str(Path.home() / "gateway"))
         self.env_file = tk.StringVar(value=str(DEFAULT_ENV_FILE))
-        self.autostart = tk.BooleanVar(value=True)
+        self.service = tk.BooleanVar(value=True)
+        self.autostart = tk.BooleanVar(value=False)
         self.autologin = tk.BooleanVar(value=False)
         self.run_after = tk.BooleanVar(value=False)
         self.reboot_after = tk.BooleanVar(value=False)
@@ -47,6 +48,7 @@ class GatewayInstaller(tk.Tk):
 
         self._build_ui()
         self.operation.trace_add("write", lambda *_args: self._sync_operation())
+        self.service.trace_add("write", lambda *_args: self._sync_operation())
         self._sync_operation()
         self.after(100, self._drain_output)
 
@@ -61,7 +63,7 @@ class GatewayInstaller(tk.Tk):
         ).pack(anchor=tk.W)
         ttk.Label(
             outer,
-            text="Instale, actualice o repare el Gateway conservando el control de cada cambio.",
+            text="Instale y mantenga Gateway activo como servicio en segundo plano.",
         ).pack(anchor=tk.W, pady=(4, 16))
 
         form = ttk.LabelFrame(outer, text="Configuración", padding=16)
@@ -98,33 +100,46 @@ class GatewayInstaller(tk.Tk):
         options = ttk.LabelFrame(outer, text="Opciones", padding=16)
         options.pack(fill=tk.X, pady=(14, 0))
 
+        self.service_check = ttk.Checkbutton(
+            options,
+            text="Ejecutar Gateway como servicio en segundo plano (recomendado)",
+            variable=self.service,
+        )
+        self.service_check.grid(
+            row=0,
+            column=0,
+            columnspan=2,
+            sticky=tk.W,
+            pady=(0, 8),
+        )
+
         self.autostart_check = ttk.Checkbutton(
             options,
             text="Iniciar la interfaz Gateway al abrir el escritorio",
             variable=self.autostart,
         )
-        self.autostart_check.grid(row=0, column=0, sticky=tk.W, padx=(0, 24))
+        self.autostart_check.grid(row=1, column=0, sticky=tk.W, padx=(0, 24))
 
         self.autologin_check = ttk.Checkbutton(
             options,
             text="Activar autologin de LightDM",
             variable=self.autologin,
         )
-        self.autologin_check.grid(row=0, column=1, sticky=tk.W)
+        self.autologin_check.grid(row=1, column=1, sticky=tk.W)
 
         self.run_check = ttk.Checkbutton(
             options,
             text="Ejecutar Gateway al terminar",
             variable=self.run_after,
         )
-        self.run_check.grid(row=1, column=0, sticky=tk.W, padx=(0, 24), pady=(8, 0))
+        self.run_check.grid(row=2, column=0, sticky=tk.W, padx=(0, 24), pady=(8, 0))
 
         self.reboot_check = ttk.Checkbutton(
             options,
             text="Reiniciar el equipo al terminar",
             variable=self.reboot_after,
         )
-        self.reboot_check.grid(row=1, column=1, sticky=tk.W, pady=(8, 0))
+        self.reboot_check.grid(row=2, column=1, sticky=tk.W, pady=(8, 0))
 
         action_bar = ttk.Frame(outer)
         action_bar.pack(fill=tk.X, pady=14)
@@ -215,18 +230,39 @@ class GatewayInstaller(tk.Tk):
         is_install = operation in {"Instalar", "Reparar"}
         is_update = operation == "Actualizar"
         is_uninstall = operation == "Desinstalar"
+        uses_service = self.service.get()
 
         self.repo_entry.configure(state=tk.NORMAL if not is_uninstall else tk.DISABLED)
         self.ref_entry.configure(state=tk.NORMAL if not is_uninstall else tk.DISABLED)
         self.env_entry.configure(state=tk.NORMAL if is_install else tk.DISABLED)
-        self.run_check.configure(state=tk.NORMAL if is_install else tk.DISABLED)
+        self.service_check.configure(
+            text=(
+                "El servicio en segundo plano se eliminará automáticamente"
+                if is_uninstall
+                else (
+                    "El servicio se reiniciará después de actualizar"
+                    if is_update
+                    else "Ejecutar Gateway como servicio en segundo plano (recomendado)"
+                )
+            ),
+            state=tk.NORMAL if is_install else tk.DISABLED,
+        )
+        if is_install and uses_service:
+            self.autostart.set(False)
+        self.run_check.configure(
+            state=tk.NORMAL if is_install and not uses_service else tk.DISABLED
+        )
         self.autostart_check.configure(
             text=(
                 "Eliminar el inicio automático del escritorio"
                 if is_uninstall
                 else "Iniciar la interfaz Gateway al abrir el escritorio"
             ),
-            state=tk.NORMAL if not is_update else tk.DISABLED,
+            state=(
+                tk.NORMAL
+                if is_uninstall or (is_install and not uses_service)
+                else tk.DISABLED
+            ),
         )
         self.autologin_check.configure(
             text=(
@@ -304,6 +340,7 @@ class GatewayInstaller(tk.Tk):
                 command.append("--skip-system-packages")
             if self.autostart.get():
                 command.append("--autostart")
+            command.append("--service" if self.service.get() else "--no-service")
             if self.autologin.get():
                 command.append("--autologin")
         elif operation == "Actualizar":
@@ -362,7 +399,9 @@ class GatewayInstaller(tk.Tk):
 
         command = self._build_command()
         self.launch_after_completion = (
-            operation in {"Instalar", "Reparar"} and self.run_after.get()
+            operation in {"Instalar", "Reparar"}
+            and not self.service.get()
+            and self.run_after.get()
         )
         self._append_log(f"\n=== {operation} Gateway ===\n")
         self.status.set("Trabajando...")

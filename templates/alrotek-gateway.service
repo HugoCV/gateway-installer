@@ -1,0 +1,17 @@
+[Unit]
+Description=Alrotek Gateway
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=@INSTALL_USER@
+WorkingDirectory="@APP_DIR@"
+Environment=PYTHONUNBUFFERED=1
+ExecStart="@APP_DIR@/venv/bin/python" "@APP_DIR@/main.py" --mode headless
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

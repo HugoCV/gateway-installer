@@ -47,6 +47,20 @@ validate_app_dir
 [ -d "$APP_DIR/.git" ] || fail "No existe una instalación en $APP_DIR."
 require_sudo
 
+SERVICE_WAS_ACTIVE=false
+restore_service() {
+  if [ "$SERVICE_WAS_ACTIVE" = true ]; then
+    as_root systemctl start "$GATEWAY_SERVICE_NAME" || true
+  fi
+}
+trap restore_service EXIT
+
+if service_is_active; then
+  SERVICE_WAS_ACTIVE=true
+  log "Deteniendo temporalmente $GATEWAY_SERVICE_NAME..."
+  as_root systemctl stop "$GATEWAY_SERVICE_NAME"
+fi
+
 log "[1/3] Descargando la versión $REF..."
 checkout_ref "$REPO_URL" "$REF"
 
@@ -59,7 +73,13 @@ run_as_install_user "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.tx
 
 log "[3/3] Actualización terminada."
 show_installed_version
-log "Reinicie la aplicación Gateway para cargar el código nuevo."
+if [ "$SERVICE_WAS_ACTIVE" = true ]; then
+  log "Reiniciando $GATEWAY_SERVICE_NAME..."
+  as_root systemctl start "$GATEWAY_SERVICE_NAME"
+  SERVICE_WAS_ACTIVE=false
+else
+  log "Reinicie la aplicación Gateway para cargar el código nuevo."
+fi
 
 if [ "$REBOOT_AFTER_UPDATE" = true ]; then
   log "Reiniciando el equipo..."

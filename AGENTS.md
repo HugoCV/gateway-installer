@@ -13,12 +13,14 @@ the application on a Linux desktop device.
 - `install-gateway.sh`: compatibility wrapper for the CLI installer.
 - `scripts/`: CLI implementation shared by the GUI and terminal workflows.
 - `templates/`: desktop autostart and optional LightDM configuration templates.
+- `templates/alrotek-gateway.service`: systemd unit used for headless operation.
 - `.env.example`: credential-free configuration template.
 - `.env`: Local environment settings. Treat as secret-bearing and do not print values in logs or chat.
 
 ## Safety Notes
 
 - `scripts/install.sh` may write the user's `.config/autostart/gateway.desktop` file when `--autostart` is selected.
+- The systemd service and graphical autostart are mutually exclusive because both processes would access the same device ports.
 - LightDM may only be changed through the explicit `--autologin` option. Keep its configuration isolated in `/etc/lightdm/lightdm.conf.d/90-gateway-autologin.conf`.
 - The installer uses `apt-get` for system packages. Do not add other desktop-session, login-manager, display-manager, LXDE, or unrelated `/etc` changes.
 - Do not run the script automatically during routine code changes or analysis.

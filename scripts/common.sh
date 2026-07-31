@@ -4,6 +4,8 @@ INSTALLER_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 DEFAULT_REPO_URL="https://github.com/HugoCV/gateway.git"
 DEFAULT_REF="master"
 LIGHTDM_AUTLOGIN_FILE="/etc/lightdm/lightdm.conf.d/90-gateway-autologin.conf"
+GATEWAY_SERVICE_NAME="alrotek-gateway.service"
+GATEWAY_SERVICE_FILE="/etc/systemd/system/$GATEWAY_SERVICE_NAME"
 
 log() {
   printf '%s\n' "$*"
@@ -149,6 +151,67 @@ PY
     "$temporary" "$destination"
   rm -f "$temporary"
   log "Autostart gráfico configurado en $destination"
+}
+
+remove_autostart() {
+  run_as_install_user rm -f -- "$INSTALL_HOME/.config/autostart/gateway.desktop"
+}
+
+service_is_installed() {
+  [ -f "$GATEWAY_SERVICE_FILE" ]
+}
+
+service_is_active() {
+  service_is_installed &&
+    as_root systemctl is-active --quiet "$GATEWAY_SERVICE_NAME"
+}
+
+configure_systemd_service() {
+  local temporary
+
+  command -v systemctl >/dev/null 2>&1 ||
+    fail "No se encontró systemd en este equipo."
+  if getent group dialout >/dev/null 2>&1 &&
+    ! id -nG "$INSTALL_USER" | tr ' ' '\n' | grep -qx dialout; then
+    as_root usermod -aG dialout "$INSTALL_USER"
+    log "Usuario $INSTALL_USER agregado al grupo dialout para acceder a Modbus RTU."
+  fi
+  temporary="$(mktemp)"
+  python3 - \
+    "$INSTALLER_ROOT/templates/alrotek-gateway.service" \
+    "$temporary" \
+    "$INSTALL_USER" \
+    "$APP_DIR" <<'PY'
+from pathlib import Path
+import sys
+
+source, destination, install_user, app_dir = sys.argv[1:]
+content = Path(source).read_text(encoding="utf-8")
+content = content.replace("@INSTALL_USER@", install_user)
+escaped_app_dir = (
+    app_dir.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%")
+)
+content = content.replace("@APP_DIR@", escaped_app_dir)
+Path(destination).write_text(content, encoding="utf-8")
+PY
+
+  as_root install -m 644 "$temporary" "$GATEWAY_SERVICE_FILE"
+  as_root systemctl daemon-reload
+  as_root systemctl enable --now "$GATEWAY_SERVICE_NAME"
+  rm -f -- "$temporary"
+  log "Servicio $GATEWAY_SERVICE_NAME habilitado y activo."
+}
+
+remove_systemd_service() {
+  if ! service_is_installed; then
+    return
+  fi
+
+  as_root systemctl disable --now "$GATEWAY_SERVICE_NAME" || true
+  as_root rm -f -- "$GATEWAY_SERVICE_FILE"
+  as_root systemctl daemon-reload
+  as_root systemctl reset-failed "$GATEWAY_SERVICE_NAME" 2>/dev/null || true
+  log "Servicio $GATEWAY_SERVICE_NAME eliminado."
 }
 
 configure_autologin() {

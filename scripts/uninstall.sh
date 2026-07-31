@@ -51,12 +51,13 @@ validate_app_dir
 require_sudo
 
 log "Eliminando instalación en $APP_DIR..."
+remove_systemd_service
 if [ -e "$APP_DIR" ]; then
   as_root rm -rf -- "$APP_DIR"
 fi
 
 if [ "$REMOVE_AUTOSTART" = true ]; then
-  rm -f -- "$INSTALL_HOME/.config/autostart/gateway.desktop"
+  remove_autostart
 fi
 
 if [ "$REMOVE_AUTOLOGIN" = true ]; then
