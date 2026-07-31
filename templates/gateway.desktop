@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Alrotek Gateway
+Comment=Iniciar Gateway y su interfaz de diagnóstico
+Exec="@START_SCRIPT@"
+Terminal=false
+X-GNOME-Autostart-enabled=true

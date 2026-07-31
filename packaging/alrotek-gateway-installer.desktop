@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Alrotek Gateway Installer
+Comment=Instalar y actualizar Alrotek Gateway
+Exec=alrotek-gateway-installer
+Icon=system-software-install
+Terminal=false
+Categories=System;Settings;
+Keywords=Alrotek;Gateway;Installer;
