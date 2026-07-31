@@ -8,6 +8,7 @@ the application on a Linux desktop device.
 - `launcher.sh`: validates Python, Tkinter, and sudo before opening the GUI.
 - `installer_gui.py`: Tkinter interface for install, repair, update, and uninstall.
 - `build-deb.sh`: builds the architecture-independent Debian package.
+- `VERSION`: source of truth for the Debian package version.
 - `packaging/`: package builder, application launcher, and desktop entry.
 - `install-gateway.sh`: compatibility wrapper for the CLI installer.
 - `scripts/`: CLI implementation shared by the GUI and terminal workflows.
@@ -31,7 +32,7 @@ the application on a Linux desktop device.
 - Static checks:
   - `bash -n launcher.sh install-gateway.sh scripts/*.sh`
   - `python3 -m py_compile installer_gui.py packaging/build_deb.py`
-  - `./build-deb.sh --version 1.0.0`
+  - `./build-deb.sh`
 - Shell lint, if available: `shellcheck launcher.sh install-gateway.sh build-deb.sh scripts/*.sh`
 
 ## Style

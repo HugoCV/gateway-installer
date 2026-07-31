@@ -37,7 +37,17 @@ sudo apt install ./alrotek-gateway-installer_1.0.0_all.deb
 Desde macOS o Linux:
 
 ```bash
-./build-deb.sh --version 1.0.0
+./build-deb.sh
+```
+
+El generador lee la versión desde el archivo `VERSION`. Para publicar una nueva
+versión, cambie su contenido, por ejemplo de `1.0.0` a `1.0.1`.
+
+Para una construcción puntual también puede sobrescribirla sin modificar el
+archivo:
+
+```bash
+./build-deb.sh --version 1.0.1
 ```
 
 El paquete es `Architecture: all` porque contiene Python y Bash, por lo que el

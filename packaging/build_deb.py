@@ -7,11 +7,13 @@ import shutil
 import tarfile
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PACKAGE_NAME = "alrotek-gateway-installer"
 INSTALL_ROOT = Path("opt/alrotek/gateway-installer")
+VERSION_FILE = PROJECT_ROOT / "VERSION"
 
 
 def parse_args() -> argparse.Namespace:
@@ -20,8 +22,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--version",
-        default="1.0.0",
-        help="Versión Debian del paquete (predeterminado: 1.0.0).",
+        help="Sobrescribe la versión guardada en el archivo VERSION.",
     )
     parser.add_argument(
         "--output-dir",
@@ -36,6 +37,21 @@ def validate_version(version: str) -> None:
     allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.+:~-")
     if not version or any(character not in allowed for character in version):
         raise ValueError(f"Versión inválida: {version!r}")
+
+
+def resolve_version(override: Optional[str]) -> str:
+    if override:
+        version = override.strip()
+    else:
+        try:
+            version = VERSION_FILE.read_text(encoding="utf-8").strip()
+        except FileNotFoundError as error:
+            raise FileNotFoundError(
+                f"No se encontró el archivo de versión: {VERSION_FILE}"
+            ) from error
+
+    validate_version(version)
+    return version
 
 
 def install_file(source: Path, destination: Path, mode: int) -> None:
@@ -60,6 +76,11 @@ def prepare_package_tree(root: Path, version: str) -> None:
     install_file(
         PROJECT_ROOT / "README.md",
         application_root / "README.md",
+        0o644,
+    )
+    install_file(
+        VERSION_FILE,
+        application_root / "VERSION",
         0o644,
     )
 
@@ -162,15 +183,15 @@ def create_deb(output: Path, control_archive: Path, data_archive: Path) -> None:
 
 def main() -> None:
     args = parse_args()
-    validate_version(args.version)
+    version = resolve_version(args.version)
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    output = args.output_dir / f"{PACKAGE_NAME}_{args.version}_all.deb"
+    output = args.output_dir / f"{PACKAGE_NAME}_{version}_all.deb"
 
     with tempfile.TemporaryDirectory(prefix="gateway-installer-deb-") as temporary:
         temporary_path = Path(temporary)
         package_root = temporary_path / "root"
         package_root.mkdir()
-        prepare_package_tree(package_root, args.version)
+        prepare_package_tree(package_root, version)
 
         control_archive = temporary_path / "control.tar.gz"
         data_archive = temporary_path / "data.tar.gz"
