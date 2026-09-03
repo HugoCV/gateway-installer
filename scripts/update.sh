@@ -67,6 +67,7 @@ checkout_ref "$REPO_URL" "$REF"
 log "[2/3] Actualizando dependencias..."
 [ -x "$APP_DIR/venv/bin/pip" ] ||
   fail "No existe el entorno virtual. Use la opción Reparar."
+require_supported_python "$APP_DIR/venv/bin/python"
 [ -f "$APP_DIR/requirements.txt" ] ||
   fail "El repositorio no contiene requirements.txt."
 run_as_install_user "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.txt"

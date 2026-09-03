@@ -2,7 +2,9 @@
 
 INSTALLER_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 DEFAULT_REPO_URL="https://github.com/HugoCV/gateway.git"
-DEFAULT_REF="master"
+DEFAULT_REF="main"
+MIN_PYTHON_MAJOR=3
+MIN_PYTHON_MINOR=10
 LIGHTDM_AUTLOGIN_FILE="/etc/lightdm/lightdm.conf.d/90-gateway-autologin.conf"
 GATEWAY_SERVICE_NAME="alrotek-gateway.service"
 GATEWAY_SERVICE_FILE="/etc/systemd/system/$GATEWAY_SERVICE_NAME"
@@ -14,6 +16,23 @@ log() {
 fail() {
   printf 'ERROR: %s\n' "$*" >&2
   exit 1
+}
+
+python_is_supported() {
+  "$1" -c "import sys; raise SystemExit(0 if sys.version_info >= ($MIN_PYTHON_MAJOR, $MIN_PYTHON_MINOR) else 1)" \
+    >/dev/null 2>&1
+}
+
+require_supported_python() {
+  local python_bin="$1"
+  local detected_version
+
+  command -v "$python_bin" >/dev/null 2>&1 ||
+    fail "No se encontró el intérprete de Python: $python_bin."
+  detected_version="$($python_bin -c 'import platform; print(platform.python_version())')"
+  python_is_supported "$python_bin" ||
+    fail "Gateway requiere Python ${MIN_PYTHON_MAJOR}.${MIN_PYTHON_MINOR} o superior; se encontró $detected_version."
+  log "Python compatible detectado: $detected_version ($python_bin)."
 }
 
 detect_install_user() {

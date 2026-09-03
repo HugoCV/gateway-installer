@@ -16,13 +16,15 @@ RUN_AFTER_INSTALL=false
 REBOOT_AFTER_INSTALL=false
 INSTALL_SYSTEM_PACKAGES=true
 INSTALL_USER_OVERRIDE=""
+PYTHON_BIN="${GATEWAY_PYTHON_BIN:-python3}"
 
 usage() {
   cat <<'EOF'
 Uso: install.sh [opciones]
 
   --repo-url URL             Repositorio del gateway.
-  --ref RAMA_O_VERSION       Rama, tag o commit (predeterminado: master).
+  --ref RAMA_O_VERSION       Rama, tag o commit (predeterminado: main).
+  --python-bin RUTA          Python 3.10+ utilizado para crear el entorno.
   --app-dir RUTA             Directorio de instalación.
   --env-file RUTA            Archivo .env que se copiará.
   --autostart                Iniciar la interfaz al abrir el escritorio.
@@ -41,6 +43,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --repo-url) REPO_URL="${2:?Falta URL}"; shift 2 ;;
     --ref) REF="${2:?Falta rama o versión}"; shift 2 ;;
+    --python-bin) PYTHON_BIN="${2:?Falta intérprete}"; shift 2 ;;
     --app-dir) APP_DIR="${2:?Falta ruta}"; shift 2 ;;
     --env-file) ENV_FILE="${2:?Falta ruta}"; shift 2 ;;
     --autostart) ENABLE_AUTOSTART=true; shift ;;
@@ -91,6 +94,7 @@ if [ "$INSTALL_SYSTEM_PACKAGES" = true ]; then
 else
   log "[1/7] Omitiendo dependencias del sistema."
 fi
+require_supported_python "$PYTHON_BIN"
 
 log "[2/7] Descargando la versión $REF..."
 checkout_ref "$REPO_URL" "$REF"
@@ -100,8 +104,12 @@ as_root install -m 600 -o "$INSTALL_USER" -g "$INSTALL_USER" \
   "$ENV_FILE" "$APP_DIR/.env"
 
 log "[4/7] Preparando entorno virtual..."
-if [ ! -x "$APP_DIR/venv/bin/python" ]; then
-  run_as_install_user python3 -m venv "$APP_DIR/venv"
+if [ -x "$APP_DIR/venv/bin/python" ] &&
+  ! python_is_supported "$APP_DIR/venv/bin/python"; then
+  log "El entorno existente usa una versión incompatible; se volverá a crear."
+  run_as_install_user "$PYTHON_BIN" -m venv --clear "$APP_DIR/venv"
+elif [ ! -x "$APP_DIR/venv/bin/python" ]; then
+  run_as_install_user "$PYTHON_BIN" -m venv "$APP_DIR/venv"
 fi
 run_as_install_user "$APP_DIR/venv/bin/pip" install --upgrade pip
 [ -f "$APP_DIR/requirements.txt" ] ||

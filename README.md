@@ -96,21 +96,21 @@ Instalación:
 
 ```bash
 ./scripts/install.sh \
-  --ref master \
+  --ref main \
   --env-file ./.env
 ```
 
 Actualización:
 
 ```bash
-./scripts/update.sh --ref master
+./scripts/update.sh --ref main
 ```
 
 Reparación de la instalación sin volver a ejecutar `apt`:
 
 ```bash
 ./scripts/install.sh \
-  --ref master \
+  --ref main \
   --env-file ./.env \
   --skip-system-packages
 ```
@@ -119,7 +119,7 @@ Para usar únicamente la interfaz gráfica, sin servicio en segundo plano:
 
 ```bash
 ./scripts/install.sh \
-  --ref master \
+  --ref main \
   --env-file ./.env \
   --no-service \
   --autostart
@@ -135,6 +135,11 @@ Desinstalación:
 ```
 
 Cada script ofrece el detalle completo mediante `--help`.
+
+Gateway requiere Python 3.10 o superior. El instalador valida la versión antes
+de crear el entorno virtual y se detiene con un mensaje claro si el sistema no
+dispone de una versión compatible. Puede seleccionarse otro intérprete con
+`--python-bin` o mediante la variable `GATEWAY_PYTHON_BIN`.
 
 ## Archivos de configuración
 

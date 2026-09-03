@@ -15,6 +15,7 @@ from tkinter import filedialog, messagebox, ttk
 
 ROOT_DIR = Path(__file__).resolve().parent
 DEFAULT_REPO_URL = "https://github.com/HugoCV/gateway.git"
+DEFAULT_GATEWAY_REF = "main"
 OPERATIONS = ("Instalar", "Reparar", "Actualizar", "Desinstalar")
 DEFAULT_ENV_FILE = (
     ROOT_DIR / ".env"
@@ -36,7 +37,7 @@ class GatewayInstaller(tk.Tk):
 
         self.operation = tk.StringVar(value="Instalar")
         self.repo_url = tk.StringVar(value=DEFAULT_REPO_URL)
-        self.git_ref = tk.StringVar(value="master")
+        self.git_ref = tk.StringVar(value=DEFAULT_GATEWAY_REF)
         self.app_dir = tk.StringVar(value=str(Path.home() / "gateway"))
         self.env_file = tk.StringVar(value=str(DEFAULT_ENV_FILE))
         self.service = tk.BooleanVar(value=True)
