@@ -97,6 +97,7 @@ fi
 require_supported_python "$PYTHON_BIN"
 
 log "[2/7] Descargando la versión $REF..."
+prepare_gateway_state
 checkout_ref "$REPO_URL" "$REF"
 
 log "[3/7] Copiando configuración..."

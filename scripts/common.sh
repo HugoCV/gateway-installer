@@ -8,6 +8,8 @@ MIN_PYTHON_MINOR=10
 LIGHTDM_AUTLOGIN_FILE="/etc/lightdm/lightdm.conf.d/90-gateway-autologin.conf"
 GATEWAY_SERVICE_NAME="alrotek-gateway.service"
 GATEWAY_SERVICE_FILE="/etc/systemd/system/$GATEWAY_SERVICE_NAME"
+GATEWAY_STATE_DIR="${GATEWAY_STATE_DIR:-/var/lib/alrotek-gateway}"
+GATEWAY_CONFIG_FILE="$GATEWAY_STATE_DIR/gateway.json"
 
 log() {
   printf '%s\n' "$*"
@@ -46,6 +48,7 @@ detect_install_user() {
 
   INSTALL_HOME="$(getent passwd "$INSTALL_USER" | cut -d: -f6)"
   [ -n "$INSTALL_HOME" ] || fail "No se encontró el home de $INSTALL_USER."
+  INSTALL_GROUP="$(id -gn "$INSTALL_USER")"
 }
 
 run_as_install_user() {
@@ -84,6 +87,57 @@ validate_app_dir() {
       fail "Directorio de instalación inseguro: $APP_DIR"
       ;;
   esac
+}
+
+prepare_gateway_state() {
+  local legacy_config="$APP_DIR/data/gateway.json"
+  local source_config=""
+  local temporary
+
+  as_root install -d -m 700 -o "$INSTALL_USER" -g "$INSTALL_GROUP" \
+    "$GATEWAY_STATE_DIR"
+
+  if [ ! -f "$GATEWAY_CONFIG_FILE" ]; then
+    if [ -f "$legacy_config" ]; then
+      source_config="$legacy_config"
+    fi
+
+    temporary="$(mktemp)"
+    python3 - "$source_config" "$temporary" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+source, destination = sys.argv[1:]
+data = {}
+if source:
+    try:
+        data = json.loads(Path(source).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        data = {}
+
+identity = {
+    key: data[key]
+    for key in ("organizationId", "gatewayId")
+    if data.get(key)
+}
+Path(destination).write_text(
+    json.dumps(identity, indent=2, ensure_ascii=False) + "\n",
+    encoding="utf-8",
+)
+PY
+    as_root install -m 600 -o "$INSTALL_USER" -g "$INSTALL_GROUP" \
+      "$temporary" "$GATEWAY_CONFIG_FILE"
+    rm -f -- "$temporary"
+    log "Identidad del gateway guardada fuera del repositorio."
+  fi
+
+  if [ -d "$APP_DIR/.git" ] &&
+    run_as_install_user git -C "$APP_DIR" ls-files --error-unmatch \
+      data/gateway.json >/dev/null 2>&1 &&
+    [ -n "$(run_as_install_user git -C "$APP_DIR" status --porcelain -- data/gateway.json)" ]; then
+    run_as_install_user git -C "$APP_DIR" restore --worktree -- data/gateway.json
+  fi
 }
 
 ensure_clean_repository() {
@@ -137,6 +191,7 @@ create_start_script() {
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$APP_DIR"
+export GATEWAY_CONFIG_PATH="$GATEWAY_CONFIG_FILE"
 exec "$venv_dir/bin/python" main.py >> "$APP_DIR/gateway.log" 2>&1
 EOF
   as_root chown "$INSTALL_USER:$INSTALL_USER" "$start_script"

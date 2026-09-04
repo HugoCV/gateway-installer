@@ -62,6 +62,7 @@ if service_is_active; then
 fi
 
 log "[1/3] Descargando la versión $REF..."
+prepare_gateway_state
 checkout_ref "$REPO_URL" "$REF"
 
 log "[2/3] Actualizando dependencias..."
