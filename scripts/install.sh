@@ -2,8 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=common.sh
+# shellcheck source=scripts/common.sh
 source "$SCRIPT_DIR/common.sh"
+ORIGINAL_ARGS=("$@")
 
 REPO_URL="$DEFAULT_REPO_URL"
 REF="$DEFAULT_REF"
@@ -11,6 +12,7 @@ ENV_FILE="$INSTALLER_ROOT/.env"
 APP_DIR=""
 ENABLE_AUTOSTART=false
 ENABLE_SERVICE=true
+ENABLE_NETWORK_RECOVERY=false
 ENABLE_AUTOLOGIN=false
 RUN_AFTER_INSTALL=false
 REBOOT_AFTER_INSTALL=false
@@ -30,6 +32,7 @@ Uso: install.sh [opciones]
   --autostart                Iniciar la interfaz al abrir el escritorio.
   --service                  Ejecutar Gateway como servicio (predeterminado).
   --no-service               No crear el servicio en segundo plano.
+  --network-recovery         Autorizar recuperación de wlan0 y reboot sin contraseña.
   --autologin                Configurar autologin de LightDM.
   --run                      Ejecutar el gateway al terminar.
   --reboot                   Reiniciar el equipo al terminar.
@@ -49,6 +52,7 @@ while [ "$#" -gt 0 ]; do
     --autostart) ENABLE_AUTOSTART=true; shift ;;
     --service) ENABLE_SERVICE=true; shift ;;
     --no-service) ENABLE_SERVICE=false; shift ;;
+    --network-recovery) ENABLE_NETWORK_RECOVERY=true; shift ;;
     --autologin) ENABLE_AUTOLOGIN=true; shift ;;
     --run) RUN_AFTER_INSTALL=true; shift ;;
     --reboot) REBOOT_AFTER_INSTALL=true; shift ;;
@@ -68,18 +72,15 @@ APP_DIR="${APP_DIR:-$INSTALL_HOME/gateway}"
 validate_app_dir
 [ -f "$ENV_FILE" ] || fail "No existe el archivo de configuración: $ENV_FILE"
 require_sudo
+acquire_installer_lock "${ORIGINAL_ARGS[@]}"
 
 if [ "$ENABLE_SERVICE" = true ] && [ "$ENABLE_AUTOSTART" = true ]; then
   fail "No active --service y --autostart juntos; crearían dos procesos Gateway."
 fi
 
 SERVICE_WAS_ACTIVE=false
-restore_service() {
-  if [ "$SERVICE_WAS_ACTIVE" = true ]; then
-    as_root systemctl start "$GATEWAY_SERVICE_NAME" || true
-  fi
-}
-trap restore_service EXIT
+RUNTIME_MUTATED=false
+trap finish_service_operation EXIT
 
 if service_is_active; then
   SERVICE_WAS_ACTIVE=true
@@ -91,6 +92,9 @@ if [ "$INSTALL_SYSTEM_PACKAGES" = true ]; then
   log "[1/7] Instalando dependencias del sistema..."
   as_root apt-get update
   as_root apt-get install -y git python3 python3-venv python3-pip python3-tk
+  if [ "$ENABLE_NETWORK_RECOVERY" = true ]; then
+    as_root apt-get install -y sudo iproute2 rfkill
+  fi
 else
   log "[1/7] Omitiendo dependencias del sistema."
 fi
@@ -98,10 +102,12 @@ require_supported_python "$PYTHON_BIN"
 
 log "[2/7] Descargando la versión $REF..."
 prepare_gateway_state
+RUNTIME_MUTATED=true
 checkout_ref "$REPO_URL" "$REF"
+mark_installation
 
 log "[3/7] Copiando configuración..."
-as_root install -m 600 -o "$INSTALL_USER" -g "$INSTALL_USER" \
+as_root install -m 600 -o "$INSTALL_USER" -g "$INSTALL_GROUP" \
   "$ENV_FILE" "$APP_DIR/.env"
 
 log "[4/7] Preparando entorno virtual..."
@@ -116,14 +122,22 @@ run_as_install_user "$APP_DIR/venv/bin/pip" install --upgrade pip
 [ -f "$APP_DIR/requirements.txt" ] ||
   fail "El repositorio no contiene requirements.txt."
 run_as_install_user "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.txt"
+if [ "$ENABLE_SERVICE" = true ]; then
+  verify_runtime
+fi
 
 log "[5/7] Creando comando de inicio..."
 create_start_script
 
 log "[6/7] Aplicando opciones de escritorio..."
+if [ "$ENABLE_NETWORK_RECOVERY" = true ]; then
+  configure_network_recovery
+else
+  as_root rm -f -- "$NETWORK_RECOVERY_RULE"
+fi
 if [ "$ENABLE_SERVICE" = true ]; then
   remove_autostart
-  configure_systemd_service
+  configure_systemd_service true
   SERVICE_WAS_ACTIVE=false
 else
   remove_systemd_service
@@ -141,7 +155,7 @@ show_installed_version
 
 if [ "$RUN_AFTER_INSTALL" = true ] && [ "$ENABLE_SERVICE" = false ]; then
   log "Iniciando Gateway..."
-  run_as_install_user nohup "$APP_DIR/start.sh" >/dev/null 2>&1 &
+  run_as_install_user nohup "$APP_DIR/start.sh" 9>&- >/dev/null 2>&1 &
 fi
 
 if [ "$REBOOT_AFTER_INSTALL" = true ]; then

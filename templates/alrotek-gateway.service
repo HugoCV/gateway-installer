@@ -8,7 +8,7 @@ Type=simple
 User=@INSTALL_USER@
 WorkingDirectory="@APP_DIR@"
 Environment=PYTHONUNBUFFERED=1
-Environment=GATEWAY_CONFIG_PATH=/var/lib/alrotek-gateway/gateway.json
+Environment="GATEWAY_CONFIG_PATH=@CONFIG_FILE@"
 ExecStart="@APP_DIR@/venv/bin/python" "@APP_DIR@/main.py" --mode headless
 Restart=always
 RestartSec=5

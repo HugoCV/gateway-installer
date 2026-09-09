@@ -33,6 +33,7 @@ class GatewayInstaller(tk.Tk):
 
         self.process: subprocess.Popen[str] | None = None
         self.launch_after_completion = False
+        self.launch_directory = None
         self.output_queue: queue.Queue[tuple[str, object]] = queue.Queue()
 
         self.operation = tk.StringVar(value="Instalar")
@@ -41,6 +42,7 @@ class GatewayInstaller(tk.Tk):
         self.app_dir = tk.StringVar(value=str(Path.home() / "gateway"))
         self.env_file = tk.StringVar(value=str(DEFAULT_ENV_FILE))
         self.service = tk.BooleanVar(value=True)
+        self.network_recovery = tk.BooleanVar(value=False)
         self.autostart = tk.BooleanVar(value=False)
         self.autologin = tk.BooleanVar(value=False)
         self.run_after = tk.BooleanVar(value=False)
@@ -141,6 +143,12 @@ class GatewayInstaller(tk.Tk):
             variable=self.reboot_after,
         )
         self.reboot_check.grid(row=2, column=1, sticky=tk.W, pady=(8, 0))
+        self.network_recovery_check = ttk.Checkbutton(
+            options,
+            text="Autorizar recuperación de Wi-Fi (wlan0) y reinicio del equipo por pérdida de red",
+            variable=self.network_recovery,
+        )
+        self.network_recovery_check.grid(row=3, column=0, columnspan=2, sticky=tk.W, pady=(8, 0))
 
         action_bar = ttk.Frame(outer)
         action_bar.pack(fill=tk.X, pady=14)
@@ -232,6 +240,7 @@ class GatewayInstaller(tk.Tk):
         is_update = operation == "Actualizar"
         is_uninstall = operation == "Desinstalar"
         uses_service = self.service.get()
+        self.network_recovery_check.configure(state=tk.NORMAL if is_install else tk.DISABLED)
 
         self.repo_entry.configure(state=tk.NORMAL if not is_uninstall else tk.DISABLED)
         self.ref_entry.configure(state=tk.NORMAL if not is_uninstall else tk.DISABLED)
@@ -342,6 +351,8 @@ class GatewayInstaller(tk.Tk):
             if self.autostart.get():
                 command.append("--autostart")
             command.append("--service" if self.service.get() else "--no-service")
+            if self.network_recovery.get():
+                command.append("--network-recovery")
             if self.autologin.get():
                 command.append("--autologin")
         elif operation == "Actualizar":
@@ -404,6 +415,7 @@ class GatewayInstaller(tk.Tk):
             and not self.service.get()
             and self.run_after.get()
         )
+        self.launch_directory = Path(self.app_dir.get().strip())
         self._append_log(f"\n=== {operation} Gateway ===\n")
         self.status.set("Trabajando...")
         self.run_button.configure(state=tk.DISABLED)
@@ -468,7 +480,7 @@ class GatewayInstaller(tk.Tk):
             if self.launch_after_completion:
                 try:
                     subprocess.Popen(
-                        [str(Path(self.app_dir.get().strip()) / "start.sh")],
+                        [str(self.launch_directory / "start.sh")],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                         start_new_session=True,

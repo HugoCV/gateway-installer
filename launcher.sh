@@ -28,4 +28,9 @@ if ! python3 -c 'import tkinter' >/dev/null 2>&1; then
   as_root apt-get install -y python3-tk
 fi
 
+if ! command -v pkexec >/dev/null 2>&1; then
+  as_root apt-get update
+  as_root apt-get install -y policykit-1
+fi
+
 exec python3 "$SCRIPT_DIR/installer_gui.py"

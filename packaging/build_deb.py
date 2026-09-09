@@ -116,7 +116,7 @@ Version: {version}
 Section: admin
 Priority: optional
 Architecture: all
-Depends: python3 (>= 3.9), python3-tk, git, sudo, pkexec | policykit-1
+Depends: python3 (>= 3.10), python3-tk, git, sudo, pkexec | policykit-1
 Maintainer: Alrotek
 Description: Instalador gráfico de Alrotek Gateway
  Instala, repara, actualiza y desinstala Gateway en equipos Linux.

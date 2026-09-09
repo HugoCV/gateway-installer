@@ -2,8 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=common.sh
+# shellcheck source=scripts/common.sh
 source "$SCRIPT_DIR/common.sh"
+ORIGINAL_ARGS=("$@")
 
 REPO_URL="$DEFAULT_REPO_URL"
 REF="$DEFAULT_REF"
@@ -46,14 +47,11 @@ APP_DIR="${APP_DIR:-$INSTALL_HOME/gateway}"
 validate_app_dir
 [ -d "$APP_DIR/.git" ] || fail "No existe una instalación en $APP_DIR."
 require_sudo
+acquire_installer_lock "${ORIGINAL_ARGS[@]}"
 
 SERVICE_WAS_ACTIVE=false
-restore_service() {
-  if [ "$SERVICE_WAS_ACTIVE" = true ]; then
-    as_root systemctl start "$GATEWAY_SERVICE_NAME" || true
-  fi
-}
-trap restore_service EXIT
+RUNTIME_MUTATED=false
+trap finish_service_operation EXIT
 
 if service_is_active; then
   SERVICE_WAS_ACTIVE=true
@@ -63,7 +61,9 @@ fi
 
 log "[1/3] Descargando la versión $REF..."
 prepare_gateway_state
+RUNTIME_MUTATED=true
 checkout_ref "$REPO_URL" "$REF"
+mark_installation
 
 log "[2/3] Actualizando dependencias..."
 [ -x "$APP_DIR/venv/bin/pip" ] ||
@@ -72,6 +72,11 @@ require_supported_python "$APP_DIR/venv/bin/python"
 [ -f "$APP_DIR/requirements.txt" ] ||
   fail "El repositorio no contiene requirements.txt."
 run_as_install_user "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.txt"
+create_start_script
+if service_is_installed; then
+  verify_runtime
+  configure_systemd_service false
+fi
 
 log "[3/3] Actualización terminada."
 show_installed_version

@@ -2,8 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=common.sh
+# shellcheck source=scripts/common.sh
 source "$SCRIPT_DIR/common.sh"
+ORIGINAL_ARGS=("$@")
 
 APP_DIR=""
 REMOVE_AUTOSTART=false
@@ -49,12 +50,16 @@ validate_app_dir
 [ "$CONFIRMED" = true ] ||
   fail "La desinstalación requiere confirmación mediante --yes."
 require_sudo
+acquire_installer_lock "${ORIGINAL_ARGS[@]}"
+require_registered_installation
 
 log "Eliminando instalación en $APP_DIR..."
 remove_systemd_service
+as_root rm -f -- "$NETWORK_RECOVERY_RULE"
 if [ -e "$APP_DIR" ]; then
   as_root rm -rf -- "$APP_DIR"
 fi
+as_root rm -f -- /var/lib/alrotek-gateway-installer/app-dir
 
 if [ "$REMOVE_AUTOSTART" = true ]; then
   remove_autostart

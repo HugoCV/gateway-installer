@@ -90,6 +90,16 @@ journalctl -u alrotek-gateway -f
 El autologin y el reinicio permanecen desactivados hasta que el usuario los
 seleccione.
 
+La opción **Autorizar recuperación de Wi-Fi** permite que el monitor del Gateway
+reinicie `wlan0`, desbloquee Wi-Fi y solicite un reinicio del equipo cuando se
+cumpla su tiempo de desconexión. Está desactivada inicialmente. Por terminal se
+activa con `--network-recovery` durante Instalar o Reparar. Instala una regla
+validada con `visudo` en `/etc/sudoers.d/alrotek-gateway-network`, limitada a esos
+comandos exactos. Este permiso se aplica a la cuenta del Gateway; no concede
+acceso general a sudo. Reparar sin esta opción elimina el permiso, y Actualizar
+conserva la elección existente. Sin este permiso, el monitor puede detectar la
+pérdida de red, pero no ejecutar esas acciones privilegiadas.
+
 ## Uso por terminal
 
 Instalación:
@@ -171,16 +181,38 @@ existente mediante la interfaz.
 - Rechaza actualizaciones cuando la instalación contiene cambios locales.
 - La desinstalación exige confirmación y valida el directorio antes de eliminarlo.
 - La rama o versión que se instala siempre queda visible y configurable.
+- Las rutas deben ser subdirectorios del home del usuario o de `/opt`; se resuelven
+  enlaces simbólicos y componentes `..` antes de aceptarlas.
+- Instalar y Actualizar registran la ruta en
+  `/var/lib/alrotek-gateway-installer/app-dir`. Desinstalar exige que coincida con
+  ese registro y que contenga la aplicación. Para instalaciones anteriores sin
+  registro, ejecute Reparar primero. La identidad en `/var/lib/alrotek-gateway`
+  se conserva tras desinstalar, incluidos los respaldos de configuración anterior.
+- Un bloqueo global impide ejecutar dos operaciones simultáneamente.
+- Si una actualización falla después de comenzar a modificar el runtime, el
+  servicio queda detenido y deshabilitado, también para el próximo arranque.
+  Ejecute Reparar con la opción de servicio y revise el error antes de volver a
+  iniciarlo. No hay rollback automático del código ni del entorno virtual.
+- Actualizar regenera el comando de inicio y la unidad systemd para aplicar la
+  ruta de identidad externa; conserva si el servicio estaba activo o detenido.
+- Antes de activar el servicio, se verifica que la aplicación se importe, admita
+  headless y tenga `organizationId` y `gatewayId`. Estas comprobaciones se ejecutan
+  con la cuenta del Gateway y no abren conexiones a dispositivos.
 
 ## Validación para desarrollo
 
 ```bash
 bash -n launcher.sh install-gateway.sh scripts/*.sh
 python3 -m py_compile installer_gui.py packaging/build_deb.py
+python3 -m unittest discover -s tests -v
 ```
 
 Si `shellcheck` está disponible:
 
 ```bash
-shellcheck launcher.sh install-gateway.sh build-deb.sh scripts/*.sh
+shellcheck -x launcher.sh install-gateway.sh build-deb.sh scripts/*.sh
 ```
+
+Las pruebas usan directorios temporales y funciones aisladas; no ejecutan los
+entrypoints de instalación ni requieren sudo. La prueba de exclusión mutua
+requiere `flock` de `util-linux` (se omite si no está disponible).
