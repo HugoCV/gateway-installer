@@ -28,8 +28,10 @@ class GatewayInstaller(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Alrotek Gateway Installer")
-        self.geometry("900x720")
-        self.minsize(780, 620)
+        width = min(820, max(320, self.winfo_screenwidth() - 40))
+        height = min(620, max(280, self.winfo_screenheight() - 100))
+        self.geometry(f"{width}x{height}+10+30")
+        self.minsize(min(480, width), min(320, height))
 
         self.process: subprocess.Popen[str] | None = None
         self.launch_after_completion = False
@@ -56,20 +58,34 @@ class GatewayInstaller(tk.Tk):
         self.after(100, self._drain_output)
 
     def _build_ui(self) -> None:
-        outer = ttk.Frame(self, padding=20)
+        outer = ttk.Frame(self, padding=8)
         outer.pack(fill=tk.BOTH, expand=True)
+        outer.columnconfigure(0, weight=1)
+        outer.rowconfigure(0, weight=3)
+        outer.rowconfigure(2, weight=1, minsize=70)
 
-        ttk.Label(
-            outer,
-            text="Alrotek Gateway Installer",
-            font=("", 20, "bold"),
-        ).pack(anchor=tk.W)
-        ttk.Label(
-            outer,
-            text="Instale y mantenga Gateway activo como servicio en segundo plano.",
-        ).pack(anchor=tk.W, pady=(4, 16))
+        settings_view = ttk.Frame(outer)
+        settings_view.grid(row=0, column=0, sticky="nsew")
+        self.settings_canvas = tk.Canvas(settings_view, highlightthickness=0, height=390)
+        settings_scroll = ttk.Scrollbar(
+            settings_view, orient=tk.VERTICAL, command=self.settings_canvas.yview
+        )
+        self.settings_canvas.configure(yscrollcommand=settings_scroll.set)
+        settings_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.settings_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        settings = ttk.Frame(self.settings_canvas)
+        settings_window = self.settings_canvas.create_window((0, 0), window=settings, anchor="nw")
+        settings.bind("<Configure>", lambda _event: self.settings_canvas.configure(
+            scrollregion=self.settings_canvas.bbox("all")
+        ))
+        self.settings_canvas.bind("<Configure>", lambda event: self.settings_canvas.itemconfigure(
+            settings_window, width=event.width
+        ))
+        self.bind("<MouseWheel>", self._scroll_settings)
+        self.bind("<Button-4>", self._scroll_settings)
+        self.bind("<Button-5>", self._scroll_settings)
 
-        form = ttk.LabelFrame(outer, text="Configuración", padding=16)
+        form = ttk.LabelFrame(settings, text="Configuración", padding=8)
         form.pack(fill=tk.X)
         form.columnconfigure(1, weight=1)
 
@@ -100,12 +116,12 @@ class GatewayInstaller(tk.Tk):
             file_button=True,
         )
 
-        options = ttk.LabelFrame(outer, text="Opciones", padding=16)
-        options.pack(fill=tk.X, pady=(14, 0))
+        options = ttk.LabelFrame(settings, text="Opciones", padding=8)
+        options.pack(fill=tk.X, pady=(6, 0))
 
         self.service_check = ttk.Checkbutton(
             options,
-            text="Ejecutar Gateway como servicio en segundo plano (recomendado)",
+            text="Servicio en segundo plano (arranca con el equipo)",
             variable=self.service,
         )
         self.service_check.grid(
@@ -113,45 +129,45 @@ class GatewayInstaller(tk.Tk):
             column=0,
             columnspan=2,
             sticky=tk.W,
-            pady=(0, 8),
+            pady=2,
         )
 
         self.autostart_check = ttk.Checkbutton(
             options,
-            text="Iniciar la interfaz Gateway al abrir el escritorio",
+            text="Abrir interfaz al iniciar sesión",
             variable=self.autostart,
         )
-        self.autostart_check.grid(row=1, column=0, sticky=tk.W, padx=(0, 24))
+        self.autostart_check.grid(row=1, column=0, sticky=tk.W, pady=2)
 
         self.autologin_check = ttk.Checkbutton(
             options,
             text="Activar autologin de LightDM",
             variable=self.autologin,
         )
-        self.autologin_check.grid(row=1, column=1, sticky=tk.W)
+        self.autologin_check.grid(row=2, column=0, sticky=tk.W, pady=2)
 
         self.run_check = ttk.Checkbutton(
             options,
             text="Ejecutar Gateway al terminar",
             variable=self.run_after,
         )
-        self.run_check.grid(row=2, column=0, sticky=tk.W, padx=(0, 24), pady=(8, 0))
+        self.run_check.grid(row=3, column=0, sticky=tk.W, pady=2)
 
         self.reboot_check = ttk.Checkbutton(
             options,
             text="Reiniciar el equipo al terminar",
             variable=self.reboot_after,
         )
-        self.reboot_check.grid(row=2, column=1, sticky=tk.W, pady=(8, 0))
+        self.reboot_check.grid(row=4, column=0, sticky=tk.W, pady=2)
         self.network_recovery_check = ttk.Checkbutton(
             options,
-            text="Autorizar recuperación de Wi-Fi (wlan0) y reinicio del equipo por pérdida de red",
+            text="Autorizar recuperación de wlan0 y reinicio por pérdida de red",
             variable=self.network_recovery,
         )
-        self.network_recovery_check.grid(row=3, column=0, columnspan=2, sticky=tk.W, pady=(8, 0))
+        self.network_recovery_check.grid(row=5, column=0, sticky=tk.W, pady=2)
 
         action_bar = ttk.Frame(outer)
-        action_bar.pack(fill=tk.X, pady=14)
+        action_bar.grid(row=1, column=0, sticky="ew", pady=6)
         self.run_button = ttk.Button(
             action_bar,
             text="Iniciar instalación",
@@ -168,7 +184,7 @@ class GatewayInstaller(tk.Tk):
         ttk.Label(action_bar, textvariable=self.status).pack(side=tk.RIGHT)
 
         log_frame = ttk.LabelFrame(outer, text="Actividad", padding=8)
-        log_frame.pack(fill=tk.BOTH, expand=True)
+        log_frame.grid(row=2, column=0, sticky="nsew")
 
         self.log = tk.Text(
             log_frame,
@@ -178,11 +194,24 @@ class GatewayInstaller(tk.Tk):
             foreground="#f0f0f0",
             insertbackground="#f0f0f0",
             font=("Courier", 10),
+            height=4,
+            width=1,
         )
         scrollbar = ttk.Scrollbar(log_frame, orient=tk.VERTICAL, command=self.log.yview)
         self.log.configure(yscrollcommand=scrollbar.set)
         self.log.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+    def _scroll_settings(self, event) -> None:
+        # Keep the activity log's native scrolling independent of the form.
+        widget = event.widget
+        while widget is not None:
+            if widget == self.settings_canvas:
+                if self.settings_canvas.bbox("all")[3] > self.settings_canvas.winfo_height():
+                    direction = -1 if event.num == 4 or getattr(event, "delta", 0) > 0 else 1
+                    self.settings_canvas.yview_scroll(direction * 3, "units")
+                return
+            widget = getattr(widget, "master", None)
 
     def _entry_row(
         self,
@@ -247,12 +276,12 @@ class GatewayInstaller(tk.Tk):
         self.env_entry.configure(state=tk.NORMAL if is_install else tk.DISABLED)
         self.service_check.configure(
             text=(
-                "El servicio en segundo plano se eliminará automáticamente"
+                    "Eliminar el servicio en segundo plano"
                 if is_uninstall
                 else (
                     "El servicio se reiniciará después de actualizar"
                     if is_update
-                    else "Ejecutar Gateway como servicio en segundo plano (recomendado)"
+                    else "Servicio en segundo plano (arranca con el equipo)"
                 )
             ),
             state=tk.NORMAL if is_install else tk.DISABLED,
@@ -266,7 +295,7 @@ class GatewayInstaller(tk.Tk):
             text=(
                 "Eliminar el inicio automático del escritorio"
                 if is_uninstall
-                else "Iniciar la interfaz Gateway al abrir el escritorio"
+                else "Abrir interfaz al iniciar sesión"
             ),
             state=(
                 tk.NORMAL
