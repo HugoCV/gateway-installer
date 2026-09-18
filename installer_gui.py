@@ -24,6 +24,31 @@ DEFAULT_ENV_FILE = (
 )
 
 
+def administrative_prefix() -> list[str]:
+    """Reuse existing sudo authorization before requesting a PolicyKit dialog."""
+    if os.geteuid() == 0:
+        return []
+    if shutil.which("sudo"):
+        try:
+            available = subprocess.run(
+                ["sudo", "-n", "--", "true"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=3,
+            )
+            if available.returncode == 0:
+                return ["sudo", "-n", "--"]
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    if shutil.which("pkexec"):
+        return ["pkexec"]
+    raise RuntimeError(
+        "No se obtuvieron permisos mediante sudo sin contraseña y no se encontró pkexec. "
+        "Abra launcher.sh desde una terminal para configurar los permisos necesarios."
+    )
+
+
 class GatewayInstaller(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
@@ -325,10 +350,10 @@ class GatewayInstaller(tk.Tk):
             )
             return False
 
-        if os.geteuid() != 0 and shutil.which("pkexec") is None:
+        if os.geteuid() != 0 and not (shutil.which("sudo") or shutil.which("pkexec")):
             messagebox.showerror(
                 "Permisos no disponibles",
-                "No se encontró pkexec. Instale policykit-1 o abra el instalador desde launcher.sh.",
+                "No se encontró sudo ni pkexec. Abra el instalador desde launcher.sh.",
             )
             return False
 
@@ -408,9 +433,7 @@ class GatewayInstaller(tk.Tk):
 
         if self.reboot_after.get():
             command.append("--reboot")
-        if os.geteuid() != 0:
-            command.insert(0, "pkexec")
-        return command
+        return administrative_prefix() + command
 
     def _start(self) -> None:
         if self.process is not None or not self._validate():
@@ -434,7 +457,11 @@ class GatewayInstaller(tk.Tk):
             if not confirmed:
                 return
 
-        command = self._build_command()
+        try:
+            command = self._build_command()
+        except RuntimeError as error:
+            messagebox.showerror("Permisos no disponibles", str(error))
+            return
         self.launch_after_completion = (
             operation in {"Instalar", "Reparar", "Actualizar"}
             and self.run_after.get()

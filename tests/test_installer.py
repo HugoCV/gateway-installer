@@ -138,14 +138,14 @@ configure_autostart''', APP_DIR=str(app), INSTALL_USER='user', INSTALL_GROUP='st
             service=variable(True), network_recovery=variable(False),
             autologin=variable(False), reboot_after=variable(False),
         )
-        with patch('installer_gui.os.geteuid', return_value=1000):
+        with patch('installer_gui.administrative_prefix', return_value=['pkexec']):
             command = GatewayInstaller._build_command(form)
         self.assertIn('--service', command)
         self.assertIn('--autostart', command)
         self.assertNotIn('--no-service', command)
         form.operation = variable('Actualizar')
         form.autostart = variable(False)
-        with patch('installer_gui.os.geteuid', return_value=1000):
+        with patch('installer_gui.administrative_prefix', return_value=['pkexec']):
             command = GatewayInstaller._build_command(form)
         self.assertIn('--no-autostart', command)
 

@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 as_root() {
   if [ "$(id -u)" -eq 0 ]; then
     "$@"
+  elif command -v sudo >/dev/null 2>&1 && sudo -n -- true 2>/dev/null; then
+    sudo -n -- "$@"
   elif command -v pkexec >/dev/null 2>&1; then
     pkexec "$@"
   else

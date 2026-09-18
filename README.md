@@ -8,7 +8,7 @@ Alrotek Gateway con su interfaz de diagnóstico.
 El archivo distribuible se genera en `dist/`:
 
 ```text
-alrotek-gateway-installer_1.2.0_all.deb
+alrotek-gateway-installer_1.2.1_all.deb
 ```
 
 Transfiera ese archivo al equipo Ubuntu/Debian y ábralo con doble clic. El
@@ -23,13 +23,17 @@ Después de instalar el paquete:
 4. Seleccione el archivo de configuración y las opciones deseadas.
 5. Presione **Iniciar instalación**.
 
-Cuando una operación necesita permisos administrativos, Linux muestra la
-ventana gráfica de PolicyKit. No es necesario abrir una terminal.
+Cuando una operación necesita permisos administrativos, el instalador primero
+comprueba si `sudo` ya permite ejecutarla sin solicitar contraseña. Si esa
+autorización está disponible, la utiliza; en caso contrario, solicita permisos
+mediante la ventana gráfica de PolicyKit. La interfaz conserva el usuario de la
+sesión como propietario del Gateway. No se modifican las reglas de autenticación
+del equipo. Este comportamiento está disponible desde la versión 1.2.1.
 
 También puede instalar el paquete manualmente:
 
 ```bash
-sudo apt install ./alrotek-gateway-installer_1.2.0_all.deb
+sudo apt install ./alrotek-gateway-installer_1.2.1_all.deb
 ```
 
 ## Construir el paquete
@@ -41,13 +45,13 @@ Desde macOS o Linux:
 ```
 
 El generador lee la versión desde el archivo `VERSION`. Para publicar una nueva
-versión, cambie su contenido, por ejemplo de `1.2.0` a `1.2.1`.
+versión, cambie su contenido, por ejemplo de `1.2.1` a `1.2.2`.
 
 Para una construcción puntual también puede sobrescribirla sin modificar el
 archivo:
 
 ```bash
-./build-deb.sh --version 1.2.1
+./build-deb.sh --version 1.2.2
 ```
 
 El paquete es `Architecture: all` porque contiene Python y Bash, por lo que el
