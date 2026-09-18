@@ -7,7 +7,7 @@ source "$SCRIPT_DIR/common.sh"
 ORIGINAL_ARGS=("$@")
 
 APP_DIR=""
-REMOVE_AUTOSTART=false
+REMOVE_AUTOSTART=true
 REMOVE_AUTOLOGIN=false
 REBOOT_AFTER_UNINSTALL=false
 CONFIRMED=false
@@ -55,6 +55,7 @@ require_registered_installation
 
 log "Eliminando instalación en $APP_DIR..."
 remove_systemd_service
+remove_desktop_launcher
 as_root rm -f -- "$NETWORK_RECOVERY_RULE"
 if [ -e "$APP_DIR" ]; then
   as_root rm -rf -- "$APP_DIR"

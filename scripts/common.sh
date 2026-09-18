@@ -4,7 +4,7 @@
 
 INSTALLER_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 DEFAULT_REPO_URL="https://github.com/HugoCV/gateway.git"
-DEFAULT_REF="main"
+DEFAULT_REF="master"
 MIN_PYTHON_MAJOR=3
 MIN_PYTHON_MINOR=10
 LIGHTDM_AUTLOGIN_FILE="/etc/lightdm/lightdm.conf.d/90-gateway-autologin.conf"
@@ -156,6 +156,23 @@ finish_service_operation() {
   return "$result"
 }
 
+require_runtime_stopped() {
+  run_as_install_user python3 - <<'PYTHON'
+import fcntl
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+path = Path(tempfile.gettempdir()) / f"alrotek-gateway-{os.getuid()}.lock"
+with path.open('a+') as lock:
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        sys.exit('ERROR: Cierre la ventana operativa de la versión anterior de Gateway y vuelva a intentar. El runtime sigue activo.')
+PYTHON
+}
+
 prepare_gateway_state() {
   local legacy_config="$APP_DIR/data/gateway.json"
   local source_config=""
@@ -272,7 +289,7 @@ create_start_script() {
 set -euo pipefail
 cd $quoted_app
 export GATEWAY_CONFIG_PATH=$quoted_config
-exec $quoted_python main.py >> $quoted_log 2>&1
+exec $quoted_python main.py --mode gui >> $quoted_log 2>&1
 EOF
   run_as_install_user chmod 755 "$start_script"
 }
@@ -286,6 +303,14 @@ os.chdir(sys.argv[1])
 sys.path.insert(0, sys.argv[1])
 from application.app_controller import AppController
 from infrastructure.config.loader import get_gateway
+try:
+    import main
+    from infrastructure.runtime import PROTOCOL_VERSION
+    from ui.service_client import ServiceClient
+except ImportError:
+    sys.exit('ERROR: Esta versión del Gateway no admite una interfaz separada. Seleccione una versión actualizada.')
+if getattr(main, 'SERVICE_UI_PROTOCOL', None) != PROTOCOL_VERSION:
+    sys.exit('ERROR: Actualice Gateway: la interfaz debe conectarse al servicio sin iniciar otro runtime.')
 config = get_gateway()
 if not config.get('organizationId') or not config.get('gatewayId'):
     sys.exit('ERROR: Configure GATEWAY_ORGANIZATION_ID y GATEWAY_ID en .env o la identidad externa antes de iniciar.')
@@ -294,9 +319,29 @@ if not callable(getattr(AppController, 'run', None)):
 PY
 }
 
-configure_autostart() {
-  local autostart_dir="$INSTALL_HOME/.config/autostart"
-  local destination="$autostart_dir/gateway.desktop"
+verify_service_ready() {
+  log "Esperando la conexión local del servicio..."
+  run_as_install_user env GATEWAY_CONFIG_PATH="$GATEWAY_CONFIG_FILE" \
+    "$APP_DIR/venv/bin/python" - "$APP_DIR" <<'PY'
+import sys
+import time
+sys.path.insert(0, sys.argv[1])
+from infrastructure.runtime import RuntimeClient
+
+deadline = time.monotonic() + 15
+while time.monotonic() < deadline:
+    try:
+        RuntimeClient().request('status')
+        break
+    except (OSError, ValueError):
+        time.sleep(0.5)
+else:
+    sys.exit('ERROR: El servicio no está disponible. Revise journalctl -u alrotek-gateway y ejecute Reparar.')
+PY
+}
+
+write_desktop_entry() {
+  local destination="$1"
   local start_script="$APP_DIR/start.sh"
   local temporary
 
@@ -304,23 +349,34 @@ configure_autostart() {
   python3 - \
     "$INSTALLER_ROOT/templates/gateway.desktop" \
     "$temporary" \
-    "$start_script" <<'PY'
+    "$start_script" <<'PYTHON'
 from pathlib import Path
 import sys
 
 source, destination, start_script = sys.argv[1:]
+# Desktop Entry quoting has both an Exec layer and a string-escape layer.
+escaped = start_script.replace('\\', '\\\\\\\\').replace('"', '\\\\"').replace('`', '\\\\`').replace('$', '\\\\$').replace('%', '%%')
 content = Path(source).read_text(encoding="utf-8")
-Path(destination).write_text(
-    content.replace("@START_SCRIPT@", start_script),
-    encoding="utf-8",
-)
-PY
+Path(destination).write_text(content.replace("@START_SCRIPT@", escaped), encoding="utf-8")
+PYTHON
 
-  run_as_install_user mkdir -p "$autostart_dir"
+  run_as_install_user mkdir -p "$(dirname -- "$destination")"
   as_root install -m 644 -o "$INSTALL_USER" -g "$INSTALL_GROUP" \
     "$temporary" "$destination"
   rm -f "$temporary"
-  log "Autostart gráfico configurado en $destination"
+}
+
+configure_autostart() {
+  write_desktop_entry "$INSTALL_HOME/.config/autostart/gateway.desktop"
+  log "La interfaz se abrirá al iniciar sesión y se conectará al servicio."
+}
+
+configure_desktop_launcher() {
+  write_desktop_entry "$INSTALL_HOME/.local/share/applications/alrotek-gateway.desktop"
+}
+
+remove_desktop_launcher() {
+  run_as_install_user rm -f -- "$INSTALL_HOME/.local/share/applications/alrotek-gateway.desktop"
 }
 
 remove_autostart() {
@@ -370,6 +426,7 @@ PY
   as_root systemctl daemon-reload
   if [ "${1:-true}" = true ]; then
     as_root systemctl enable --now "$GATEWAY_SERVICE_NAME"
+    verify_service_ready
   fi
   rm -f -- "$temporary"
   log "Configuración del servicio $GATEWAY_SERVICE_NAME actualizada."

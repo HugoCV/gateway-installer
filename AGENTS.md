@@ -19,8 +19,9 @@ the application on a Linux desktop device.
 
 ## Safety Notes
 
-- `scripts/install.sh` may write the user's `.config/autostart/gateway.desktop` file when `--autostart` is selected.
-- The systemd service and graphical autostart are mutually exclusive because both processes would access the same device ports.
+- `scripts/install.sh` writes the user's `.config/autostart/gateway.desktop` file by default; `--no-autostart` removes it. The application menu entry is created in `.local/share/applications/alrotek-gateway.desktop`.
+- Gateway always runs through systemd. The graphical autostart launches only the local client UI; it must never create another AppController or access device ports. Both can be enabled together.
+- The installer requires a Gateway revision with the separate service/UI protocol. Before migration, reject a still-running legacy GUI that holds the hardware runtime lock.
 - LightDM may only be changed through the explicit `--autologin` option. Keep its configuration isolated in `/etc/lightdm/lightdm.conf.d/90-gateway-autologin.conf`.
 - The installer uses `apt-get` for system packages. Do not add other desktop-session, login-manager, display-manager, LXDE, or unrelated `/etc` changes.
 - Do not run the script automatically during routine code changes or analysis.

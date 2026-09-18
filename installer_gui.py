@@ -15,7 +15,7 @@ from tkinter import filedialog, messagebox, ttk
 
 ROOT_DIR = Path(__file__).resolve().parent
 DEFAULT_REPO_URL = "https://github.com/HugoCV/gateway.git"
-DEFAULT_GATEWAY_REF = "main"
+DEFAULT_GATEWAY_REF = "master"
 OPERATIONS = ("Instalar", "Reparar", "Actualizar", "Desinstalar")
 DEFAULT_ENV_FILE = (
     ROOT_DIR / ".env"
@@ -45,15 +45,14 @@ class GatewayInstaller(tk.Tk):
         self.env_file = tk.StringVar(value=str(DEFAULT_ENV_FILE))
         self.service = tk.BooleanVar(value=True)
         self.network_recovery = tk.BooleanVar(value=False)
-        self.autostart = tk.BooleanVar(value=False)
+        self.autostart = tk.BooleanVar(value=True)
         self.autologin = tk.BooleanVar(value=False)
-        self.run_after = tk.BooleanVar(value=False)
+        self.run_after = tk.BooleanVar(value=True)
         self.reboot_after = tk.BooleanVar(value=False)
         self.status = tk.StringVar(value="Listo")
 
         self._build_ui()
         self.operation.trace_add("write", lambda *_args: self._sync_operation())
-        self.service.trace_add("write", lambda *_args: self._sync_operation())
         self._sync_operation()
         self.after(100, self._drain_output)
 
@@ -121,7 +120,8 @@ class GatewayInstaller(tk.Tk):
 
         self.service_check = ttk.Checkbutton(
             options,
-            text="Servicio en segundo plano (arranca con el equipo)",
+            text="Servicio siempre activo (arranca con el equipo)",
+            state=tk.DISABLED,
             variable=self.service,
         )
         self.service_check.grid(
@@ -148,7 +148,7 @@ class GatewayInstaller(tk.Tk):
 
         self.run_check = ttk.Checkbutton(
             options,
-            text="Ejecutar Gateway al terminar",
+            text="Abrir la interfaz al terminar",
             variable=self.run_after,
         )
         self.run_check.grid(row=3, column=0, sticky=tk.W, pady=2)
@@ -268,7 +268,6 @@ class GatewayInstaller(tk.Tk):
         is_install = operation in {"Instalar", "Reparar"}
         is_update = operation == "Actualizar"
         is_uninstall = operation == "Desinstalar"
-        uses_service = self.service.get()
         self.network_recovery_check.configure(state=tk.NORMAL if is_install else tk.DISABLED)
 
         self.repo_entry.configure(state=tk.NORMAL if not is_uninstall else tk.DISABLED)
@@ -279,17 +278,15 @@ class GatewayInstaller(tk.Tk):
                     "Eliminar el servicio en segundo plano"
                 if is_uninstall
                 else (
-                    "El servicio se reiniciará después de actualizar"
+                    "El servicio se habilitará e iniciará después de actualizar"
                     if is_update
-                    else "Servicio en segundo plano (arranca con el equipo)"
+                    else "Servicio siempre activo (arranca con el equipo)"
                 )
             ),
-            state=tk.NORMAL if is_install else tk.DISABLED,
+            state=tk.DISABLED,
         )
-        if is_install and uses_service:
-            self.autostart.set(False)
         self.run_check.configure(
-            state=tk.NORMAL if is_install and not uses_service else tk.DISABLED
+            state=tk.NORMAL if is_install or is_update else tk.DISABLED
         )
         self.autostart_check.configure(
             text=(
@@ -299,7 +296,7 @@ class GatewayInstaller(tk.Tk):
             ),
             state=(
                 tk.NORMAL
-                if is_uninstall or (is_install and not uses_service)
+                if not is_uninstall
                 else tk.DISABLED
             ),
         )
@@ -377,9 +374,8 @@ class GatewayInstaller(tk.Tk):
             ]
             if operation == "Reparar":
                 command.append("--skip-system-packages")
-            if self.autostart.get():
-                command.append("--autostart")
-            command.append("--service" if self.service.get() else "--no-service")
+            command.append("--autostart" if self.autostart.get() else "--no-autostart")
+            command.append("--service")
             if self.network_recovery.get():
                 command.append("--network-recovery")
             if self.autologin.get():
@@ -396,6 +392,7 @@ class GatewayInstaller(tk.Tk):
                 "--install-user",
                 install_user,
             ]
+            command.append("--autostart" if self.autostart.get() else "--no-autostart")
         else:
             command = [
                 str(ROOT_DIR / "scripts" / "uninstall.sh"),
@@ -405,8 +402,7 @@ class GatewayInstaller(tk.Tk):
                 "--install-user",
                 install_user,
             ]
-            if self.autostart.get():
-                command.append("--remove-autostart")
+            command.append("--remove-autostart")
             if self.autologin.get():
                 command.append("--remove-autologin")
 
@@ -440,9 +436,9 @@ class GatewayInstaller(tk.Tk):
 
         command = self._build_command()
         self.launch_after_completion = (
-            operation in {"Instalar", "Reparar"}
-            and not self.service.get()
+            operation in {"Instalar", "Reparar", "Actualizar"}
             and self.run_after.get()
+            and not self.reboot_after.get()
         )
         self.launch_directory = Path(self.app_dir.get().strip())
         self._append_log(f"\n=== {operation} Gateway ===\n")
@@ -514,7 +510,7 @@ class GatewayInstaller(tk.Tk):
                         stderr=subprocess.DEVNULL,
                         start_new_session=True,
                     )
-                    self._append_log("Gateway iniciado en la sesión gráfica.\n")
+                    self._append_log("Interfaz abierta. El servicio continúa funcionando en segundo plano.\n")
                 except Exception as error:
                     self._append_log(f"No se pudo iniciar Gateway: {error}\n")
             self.status.set("Completado")

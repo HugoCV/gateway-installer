@@ -10,8 +10,7 @@ REPO_URL="$DEFAULT_REPO_URL"
 REF="$DEFAULT_REF"
 ENV_FILE="$INSTALLER_ROOT/.env"
 APP_DIR=""
-ENABLE_AUTOSTART=false
-ENABLE_SERVICE=true
+ENABLE_AUTOSTART=true
 ENABLE_NETWORK_RECOVERY=false
 ENABLE_AUTOLOGIN=false
 RUN_AFTER_INSTALL=false
@@ -25,16 +24,16 @@ usage() {
 Uso: install.sh [opciones]
 
   --repo-url URL             Repositorio del gateway.
-  --ref RAMA_O_VERSION       Rama, tag o commit (predeterminado: main).
+  --ref RAMA_O_VERSION       Rama, tag o commit (predeterminado: master).
   --python-bin RUTA          Python 3.10+ utilizado para crear el entorno.
   --app-dir RUTA             Directorio de instalación.
   --env-file RUTA            Archivo .env que se copiará.
-  --autostart                Iniciar la interfaz al abrir el escritorio.
-  --service                  Ejecutar Gateway como servicio (predeterminado).
-  --no-service               No crear el servicio en segundo plano.
+  --autostart                Abrir la interfaz al iniciar sesión (predeterminado).
+  --no-autostart             Abrir la interfaz manualmente; el servicio sigue activo.
+  --service                  Compatibilidad: Gateway siempre usa el servicio.
   --network-recovery         Autorizar recuperación de wlan0 y reboot sin contraseña.
   --autologin                Configurar autologin de LightDM.
-  --run                      Ejecutar el gateway al terminar.
+  --run                      Abrir la interfaz al terminar (requiere escritorio).
   --reboot                   Reiniciar el equipo al terminar.
   --skip-system-packages     No ejecutar apt.
   --install-user USUARIO     Usuario propietario de la instalación.
@@ -50,8 +49,9 @@ while [ "$#" -gt 0 ]; do
     --app-dir) APP_DIR="${2:?Falta ruta}"; shift 2 ;;
     --env-file) ENV_FILE="${2:?Falta ruta}"; shift 2 ;;
     --autostart) ENABLE_AUTOSTART=true; shift ;;
-    --service) ENABLE_SERVICE=true; shift ;;
-    --no-service) ENABLE_SERVICE=false; shift ;;
+    --no-autostart) ENABLE_AUTOSTART=false; shift ;;
+    --service) shift ;;
+    --no-service) fail "Gateway ahora requiere el servicio. Use --no-autostart para ocultar la interfaz." ;;
     --network-recovery) ENABLE_NETWORK_RECOVERY=true; shift ;;
     --autologin) ENABLE_AUTOLOGIN=true; shift ;;
     --run) RUN_AFTER_INSTALL=true; shift ;;
@@ -74,10 +74,6 @@ validate_app_dir
 require_sudo
 acquire_installer_lock "${ORIGINAL_ARGS[@]}"
 
-if [ "$ENABLE_SERVICE" = true ] && [ "$ENABLE_AUTOSTART" = true ]; then
-  fail "No active --service y --autostart juntos; crearían dos procesos Gateway."
-fi
-
 SERVICE_WAS_ACTIVE=false
 RUNTIME_MUTATED=false
 trap finish_service_operation EXIT
@@ -87,6 +83,7 @@ if service_is_active; then
   log "Deteniendo temporalmente $GATEWAY_SERVICE_NAME..."
   as_root systemctl stop "$GATEWAY_SERVICE_NAME"
 fi
+require_runtime_stopped
 
 if [ "$INSTALL_SYSTEM_PACKAGES" = true ]; then
   log "[1/7] Instalando dependencias del sistema..."
@@ -122,9 +119,7 @@ run_as_install_user "$APP_DIR/venv/bin/pip" install --upgrade pip
 [ -f "$APP_DIR/requirements.txt" ] ||
   fail "El repositorio no contiene requirements.txt."
 run_as_install_user "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.txt"
-if [ "$ENABLE_SERVICE" = true ]; then
-  verify_runtime
-fi
+verify_runtime
 
 log "[5/7] Creando comando de inicio..."
 create_start_script
@@ -135,17 +130,14 @@ if [ "$ENABLE_NETWORK_RECOVERY" = true ]; then
 else
   as_root rm -f -- "$NETWORK_RECOVERY_RULE"
 fi
-if [ "$ENABLE_SERVICE" = true ]; then
-  remove_autostart
-  configure_systemd_service true
-  SERVICE_WAS_ACTIVE=false
-else
-  remove_systemd_service
-  SERVICE_WAS_ACTIVE=false
-fi
-if [ "$ENABLE_AUTOSTART" = true ] && [ "$ENABLE_SERVICE" = false ]; then
+configure_desktop_launcher
+if [ "$ENABLE_AUTOSTART" = true ]; then
   configure_autostart
+else
+  remove_autostart
 fi
+configure_systemd_service true
+SERVICE_WAS_ACTIVE=false
 if [ "$ENABLE_AUTOLOGIN" = true ]; then
   configure_autologin
 fi
@@ -153,8 +145,8 @@ fi
 log "[7/7] Instalación terminada."
 show_installed_version
 
-if [ "$RUN_AFTER_INSTALL" = true ] && [ "$ENABLE_SERVICE" = false ]; then
-  log "Iniciando Gateway..."
+if [ "$RUN_AFTER_INSTALL" = true ]; then
+  log "Abriendo la interfaz de Gateway..."
   run_as_install_user nohup "$APP_DIR/start.sh" 9>&- >/dev/null 2>&1 &
 fi
 

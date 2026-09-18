@@ -1,7 +1,9 @@
 [Desktop Entry]
 Type=Application
 Name=Alrotek Gateway
-Comment=Iniciar Gateway y su interfaz de diagnóstico
+Comment=Ver el Gateway que funciona en segundo plano
+Icon=network-workgroup
+Categories=Utility;
 Exec="@START_SCRIPT@"
 Terminal=false
 X-GNOME-Autostart-enabled=true

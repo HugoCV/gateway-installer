@@ -11,6 +11,7 @@ REF="$DEFAULT_REF"
 APP_DIR=""
 REBOOT_AFTER_UPDATE=false
 INSTALL_USER_OVERRIDE=""
+ENABLE_AUTOSTART=true
 
 usage() {
   cat <<'EOF'
@@ -20,6 +21,8 @@ Uso: update.sh [opciones]
   --ref RAMA_O_VERSION  Rama, tag o commit.
   --app-dir RUTA        Directorio instalado.
   --reboot              Reiniciar el equipo al terminar.
+  --autostart           Abrir interfaz al iniciar sesión (predeterminado).
+  --no-autostart        Abrir interfaz manualmente; el servicio sigue activo.
   --install-user USUARIO
                         Usuario propietario de la instalación.
   --help                Mostrar esta ayuda.
@@ -32,6 +35,8 @@ while [ "$#" -gt 0 ]; do
     --ref) REF="${2:?Falta rama o versión}"; shift 2 ;;
     --app-dir) APP_DIR="${2:?Falta ruta}"; shift 2 ;;
     --reboot) REBOOT_AFTER_UPDATE=true; shift ;;
+    --autostart) ENABLE_AUTOSTART=true; shift ;;
+    --no-autostart) ENABLE_AUTOSTART=false; shift ;;
     --install-user) INSTALL_USER_OVERRIDE="${2:?Falta usuario}"; shift 2 ;;
     --help) usage; exit 0 ;;
     *) fail "Opción desconocida: $1" ;;
@@ -58,6 +63,7 @@ if service_is_active; then
   log "Deteniendo temporalmente $GATEWAY_SERVICE_NAME..."
   as_root systemctl stop "$GATEWAY_SERVICE_NAME"
 fi
+require_runtime_stopped
 
 log "[1/3] Descargando la versión $REF..."
 prepare_gateway_state
@@ -72,21 +78,19 @@ require_supported_python "$APP_DIR/venv/bin/python"
 [ -f "$APP_DIR/requirements.txt" ] ||
   fail "El repositorio no contiene requirements.txt."
 run_as_install_user "$APP_DIR/venv/bin/pip" install -r "$APP_DIR/requirements.txt"
+verify_runtime
 create_start_script
-if service_is_installed; then
-  verify_runtime
-  configure_systemd_service false
-fi
-
-log "[3/3] Actualización terminada."
-show_installed_version
-if [ "$SERVICE_WAS_ACTIVE" = true ]; then
-  log "Reiniciando $GATEWAY_SERVICE_NAME..."
-  as_root systemctl start "$GATEWAY_SERVICE_NAME"
-  SERVICE_WAS_ACTIVE=false
+configure_desktop_launcher
+if [ "$ENABLE_AUTOSTART" = true ]; then
+  configure_autostart
 else
-  log "Reinicie la aplicación Gateway para cargar el código nuevo."
+  remove_autostart
 fi
+configure_systemd_service true
+SERVICE_WAS_ACTIVE=false
+
+log "[3/3] Actualización terminada. El servicio está activo y habilitado para el próximo arranque."
+show_installed_version
 
 if [ "$REBOOT_AFTER_UPDATE" = true ]; then
   log "Reiniciando el equipo..."

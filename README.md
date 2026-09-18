@@ -8,7 +8,7 @@ Alrotek Gateway con su interfaz de diagnóstico.
 El archivo distribuible se genera en `dist/`:
 
 ```text
-alrotek-gateway-installer_1.1.0_all.deb
+alrotek-gateway-installer_1.2.0_all.deb
 ```
 
 Transfiera ese archivo al equipo Ubuntu/Debian y ábralo con doble clic. El
@@ -29,7 +29,7 @@ ventana gráfica de PolicyKit. No es necesario abrir una terminal.
 También puede instalar el paquete manualmente:
 
 ```bash
-sudo apt install ./alrotek-gateway-installer_1.1.0_all.deb
+sudo apt install ./alrotek-gateway-installer_1.2.0_all.deb
 ```
 
 ## Construir el paquete
@@ -41,13 +41,13 @@ Desde macOS o Linux:
 ```
 
 El generador lee la versión desde el archivo `VERSION`. Para publicar una nueva
-versión, cambie su contenido, por ejemplo de `1.1.0` a `1.1.1`.
+versión, cambie su contenido, por ejemplo de `1.2.0` a `1.2.1`.
 
 Para una construcción puntual también puede sobrescribirla sin modificar el
 archivo:
 
 ```bash
-./build-deb.sh --version 1.1.1
+./build-deb.sh --version 1.2.1
 ```
 
 El paquete es `Architecture: all` porque contiene Python y Bash, por lo que el
@@ -75,10 +75,29 @@ La interfaz permite:
 - ejecutar Gateway o reiniciar el equipo al finalizar;
 - ver el progreso y los errores sin ocultar la salida de los scripts.
 
-El servicio en segundo plano está seleccionado inicialmente. En este modo,
-Gateway arranca con el equipo, se reinicia si falla y continúa activo al cerrar
-la interfaz o la sesión del escritorio. El autostart gráfico no puede activarse
-al mismo tiempo porque ambos procesos competirían por los puertos Modbus.
+Gateway siempre se instala como servicio. Arranca con el equipo, se reinicia si
+falla y continúa activo al cerrar la interfaz o la sesión del escritorio. La
+interfaz es un cliente del servicio: muestra dispositivos, conectividad y eventos,
+y permite guardar la identidad y solicitar un reinicio del servicio sin cerrarse.
+No abre conexiones Modbus ni MQTT propias.
+
+Por defecto la interfaz se abre al iniciar sesión. También puede abrirse desde
+**Alrotek Gateway** en el menú de aplicaciones o mediante `~/gateway/start.sh`.
+Si se abre antes de que el servicio esté disponible, espera y se conecta
+automáticamente; también se reconecta después de una actualización o reinicio.
+La ventana necesita una sesión de escritorio. Sin iniciar sesión, el servicio
+sigue funcionando y la ventana aparecerá cuando se abra el escritorio.
+
+Desde la versión 1.2.0, **Actualizar** también habilita e inicia el servicio y
+configura la interfaz al iniciar sesión. Esto migra instalaciones anteriores que
+solo usaban la interfaz. Cierre primero la ventana de la versión anterior, que
+sí controlaba los puertos. Las nuevas ventanas pueden permanecer abiertas.
+`--no-service` ya no se admite; `--no-autostart` permite abrir la ventana manualmente.
+
+Este instalador requiere la versión de Gateway que incluye `infrastructure/runtime.py`
+y la interfaz cliente. Publique primero esos cambios en el repositorio/rama que
+seleccionará al instalar; el `.deb` contiene el instalador, no el código de Gateway.
+La validación rechaza las versiones anteriores antes de configurar el servicio.
 
 Para comprobar el servicio en el equipo Linux:
 
@@ -106,33 +125,32 @@ Instalación:
 
 ```bash
 ./scripts/install.sh \
-  --ref main \
+  --ref master \
   --env-file ./.env
 ```
 
 Actualización:
 
 ```bash
-./scripts/update.sh --ref main
+./scripts/update.sh --ref master
 ```
 
 Reparación de la instalación sin volver a ejecutar `apt`:
 
 ```bash
 ./scripts/install.sh \
-  --ref main \
+  --ref master \
   --env-file ./.env \
   --skip-system-packages
 ```
 
-Para usar únicamente la interfaz gráfica, sin servicio en segundo plano:
+Para mantener el servicio y abrir la interfaz manualmente:
 
 ```bash
 ./scripts/install.sh \
-  --ref main \
+  --ref master \
   --env-file ./.env \
-  --no-service \
-  --autostart
+  --no-autostart
 ```
 
 Desinstalación:
@@ -193,11 +211,18 @@ existente mediante la interfaz.
   servicio queda detenido y deshabilitado, también para el próximo arranque.
   Ejecute Reparar con la opción de servicio y revise el error antes de volver a
   iniciarlo. No hay rollback automático del código ni del entorno virtual.
-- Actualizar regenera el comando de inicio y la unidad systemd para aplicar la
-  ruta de identidad externa; conserva si el servicio estaba activo o detenido.
+- Actualizar regenera el comando de la interfaz y la unidad systemd; habilita
+  e inicia el servicio incluso si la instalación anterior no lo utilizaba.
 - Antes de activar el servicio, se verifica que la aplicación se importe, admita
-  headless y tenga `organizationId` y `gatewayId`. Estas comprobaciones se ejecutan
+  la interfaz separada y tenga `organizationId` y `gatewayId`. Estas comprobaciones se ejecutan
   con la cuenta del Gateway y no abren conexiones a dispositivos.
+- Después del arranque, se comprueba que el servicio responde a la interfaz
+  antes de informar que la operación terminó correctamente.
+- La interfaz se comunica mediante un socket Unix privado en
+  `/var/lib/alrotek-gateway/runtime/control.sock` (o junto al archivo de identidad
+  si se configuró otra ruta). Solo la cuenta del Gateway puede acceder a él.
+- Si los ID están definidos en `.env`, prevalecen sobre la identidad externa.
+  La interfaz avisa al intentar cambiarlos; edite `.env` y reinicie el servicio.
 
 ## Validación para desarrollo
 
