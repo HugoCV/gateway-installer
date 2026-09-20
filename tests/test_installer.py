@@ -211,6 +211,29 @@ configure_systemd_service false''',
         self.assertNotIn('systemctl enable', result.stdout)
         self.assertIn('systemctl daemon-reload', result.stdout)
 
+    def test_working_directory_is_an_unquoted_path_with_literal_percent(self):
+        destination = self.root / 'service'
+        for name in ['gateway', 'gateway space 100%', 'gateway\\path"quoted']:
+            with self.subTest(name=name):
+                app_dir = str(self.home / name)
+                result = self.shell('''command() { return 0; }
+getent() { return 1; }
+as_root() {
+  if [ "$1" = install ]; then cp "$4" "$SERVICE_OUTPUT"; fi
+}
+configure_systemd_service false''',
+                    APP_DIR=app_dir, INSTALL_USER='user',
+                    SERVICE_OUTPUT=str(destination))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                content = destination.read_text()
+                working_directory = next(line for line in content.splitlines()
+                                         if line.startswith('WorkingDirectory='))
+                self.assertEqual(working_directory,
+                                 'WorkingDirectory=' + app_dir.replace('%', '%%'))
+                escaped = app_dir.replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%')
+                self.assertIn(f'ExecStart="{escaped}/venv/bin/python" '
+                              f'"{escaped}/main.py" --mode headless', content)
+
     def test_service_is_enabled_at_boot_and_checked_before_success(self):
         destination = self.root / 'service'
         result = self.shell('''command() { return 0; }

@@ -414,6 +414,8 @@ import sys
 source, destination, install_user, app_dir, config_file = sys.argv[1:]
 content = Path(source).read_text(encoding="utf-8")
 content = content.replace("@INSTALL_USER@", install_user)
+# WorkingDirectory is a path value, not a shell-style quoted argument.
+content = content.replace("@WORKING_DIRECTORY@", app_dir.replace("%", "%%"))
 escaped_app_dir = (
     app_dir.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%")
 )

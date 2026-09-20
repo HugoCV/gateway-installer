@@ -8,7 +8,7 @@ Alrotek Gateway con su interfaz de diagnóstico.
 El archivo distribuible se genera en `dist/`:
 
 ```text
-alrotek-gateway-installer_1.2.1_all.deb
+alrotek-gateway-installer_1.2.2_all.deb
 ```
 
 Transfiera ese archivo al equipo Ubuntu/Debian y ábralo con doble clic. El
@@ -33,8 +33,11 @@ del equipo. Este comportamiento está disponible desde la versión 1.2.1.
 También puede instalar el paquete manualmente:
 
 ```bash
-sudo apt install ./alrotek-gateway-installer_1.2.1_all.deb
+sudo apt install ./alrotek-gateway-installer_1.2.2_all.deb
 ```
+
+La versión 1.2.2 corrige la ruta `WorkingDirectory` del servicio systemd, que
+podía impedir su arranque con el error `bad unit file setting`.
 
 ## Construir el paquete
 
